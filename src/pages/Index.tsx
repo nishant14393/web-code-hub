@@ -1,12 +1,215 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+
+import { useState, useEffect, useRef } from 'react';
+import { Play, RotateCcw, Code2, Terminal } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { useToast } from '@/hooks/use-toast';
 
 const Index = () => {
+  const [code, setCode] = useState(`# Welcome to the Python Playground!
+# Write your Python code here and click Run
+
+print("Hello, World!")
+
+# Try some basic Python operations
+numbers = [1, 2, 3, 4, 5]
+squared = [x**2 for x in numbers]
+print(f"Original numbers: {numbers}")
+print(f"Squared numbers: {squared}")
+
+# Define a simple function
+def fibonacci(n):
+    if n <= 1:
+        return n
+    return fibonacci(n-1) + fibonacci(n-2)
+
+print(f"Fibonacci sequence (first 10 numbers):")
+for i in range(10):
+    print(fibonacci(i), end=" ")
+print()`);
+  
+  const [output, setOutput] = useState('');
+  const [isRunning, setIsRunning] = useState(false);
+  const [pyodideReady, setPyodideReady] = useState(false);
+  const pyodideRef = useRef<any>(null);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    const loadPyodide = async () => {
+      try {
+        // Load Pyodide from CDN
+        const pyodide = await (window as any).loadPyodide({
+          indexURL: "https://cdn.jsdelivr.net/pyodide/v0.24.1/full/"
+        });
+        pyodideRef.current = pyodide;
+        setPyodideReady(true);
+        setOutput('Python environment loaded successfully! Ready to run code.\n');
+      } catch (error) {
+        console.error('Failed to load Pyodide:', error);
+        setOutput('Error: Failed to load Python environment. Please refresh the page.\n');
+      }
+    };
+
+    // Load Pyodide script
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js';
+    script.onload = loadPyodide;
+    document.head.appendChild(script);
+
+    return () => {
+      if (document.head.contains(script)) {
+        document.head.removeChild(script);
+      }
+    };
+  }, []);
+
+  const runCode = async () => {
+    if (!pyodideReady || !pyodideRef.current) {
+      toast({
+        title: "Python Not Ready",
+        description: "Please wait for Python environment to load.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsRunning(true);
+    setOutput('Running...\n');
+
+    try {
+      // Capture stdout
+      pyodideRef.current.runPython(`
+import sys
+from io import StringIO
+sys.stdout = StringIO()
+sys.stderr = StringIO()
+      `);
+
+      // Run user code
+      pyodideRef.current.runPython(code);
+
+      // Get output
+      const stdout = pyodideRef.current.runPython("sys.stdout.getvalue()");
+      const stderr = pyodideRef.current.runPython("sys.stderr.getvalue()");
+
+      let result = '';
+      if (stdout) result += stdout;
+      if (stderr) result += 'Error:\n' + stderr;
+      
+      setOutput(result || 'Code executed successfully (no output)');
+
+      // Reset stdout/stderr
+      pyodideRef.current.runPython(`
+sys.stdout = sys.__stdout__
+sys.stderr = sys.__stderr__
+      `);
+
+    } catch (error) {
+      setOutput(`Error: ${error}`);
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
+  const clearOutput = () => {
+    setOutput('');
+  };
+
+  const clearCode = () => {
+    setCode('# Write your Python code here\n\n');
+  };
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold mb-4">Welcome to Your Blank App</h1>
-        <p className="text-xl text-gray-600">Start building your amazing project here!</p>
+    <div className="min-h-screen bg-gray-900 text-white">
+      {/* Header */}
+      <header className="bg-gray-800 border-b border-gray-700 p-4">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <Code2 className="h-8 w-8 text-blue-400" />
+            <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
+              Python Compiler
+            </h1>
+          </div>
+          <div className="flex items-center space-x-2">
+            <div className={`w-3 h-3 rounded-full ${pyodideReady ? 'bg-green-400' : 'bg-yellow-400'} animate-pulse`} />
+            <span className="text-sm text-gray-300">
+              {pyodideReady ? 'Ready' : 'Loading Python...'}
+            </span>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto p-4 h-[calc(100vh-80px)]">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 h-full">
+          {/* Code Editor Panel */}
+          <div className="bg-gray-800 rounded-lg border border-gray-700 flex flex-col">
+            <div className="flex items-center justify-between p-3 border-b border-gray-700">
+              <div className="flex items-center space-x-2">
+                <Code2 className="h-5 w-5 text-blue-400" />
+                <span className="font-medium">Code Editor</span>
+              </div>
+              <div className="flex space-x-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={clearCode}
+                  className="bg-gray-700 border-gray-600 hover:bg-gray-600"
+                >
+                  <RotateCcw className="h-4 w-4 mr-1" />
+                  Clear
+                </Button>
+                <Button
+                  onClick={runCode}
+                  disabled={!pyodideReady || isRunning}
+                  className="bg-blue-600 hover:bg-blue-700"
+                  size="sm"
+                >
+                  <Play className="h-4 w-4 mr-1" />
+                  {isRunning ? 'Running...' : 'Run'}
+                </Button>
+              </div>
+            </div>
+            <div className="flex-1 p-0">
+              <textarea
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                className="w-full h-full bg-gray-900 text-white p-4 border-none resize-none focus:outline-none font-mono text-sm"
+                placeholder="Write your Python code here..."
+                spellCheck={false}
+              />
+            </div>
+          </div>
+
+          {/* Output Panel */}
+          <div className="bg-gray-800 rounded-lg border border-gray-700 flex flex-col">
+            <div className="flex items-center justify-between p-3 border-b border-gray-700">
+              <div className="flex items-center space-x-2">
+                <Terminal className="h-5 w-5 text-green-400" />
+                <span className="font-medium">Output</span>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={clearOutput}
+                className="bg-gray-700 border-gray-600 hover:bg-gray-600"
+              >
+                <RotateCcw className="h-4 w-4 mr-1" />
+                Clear
+              </Button>
+            </div>
+            <div className="flex-1 p-4 overflow-auto">
+              <pre className="text-sm text-gray-300 whitespace-pre-wrap font-mono">
+                {output || 'Output will appear here when you run your code...'}
+              </pre>
+            </div>
+          </div>
+        </div>
       </div>
+
+      {/* Footer */}
+      <footer className="bg-gray-800 border-t border-gray-700 p-4 text-center text-gray-400 text-sm">
+        <p>Powered by Pyodide - Python compiled to WebAssembly</p>
+      </footer>
     </div>
   );
 };
